@@ -1,9 +1,0 @@
-BEVERAGE
-1,Apple Juice,20
-2,Manggo Juice,20
-3,Guyabano Juice,20
-4,Ice Mixed Guyabano with Teal,30
-
-CAKES
-5,Fresh,20
-6,Durian,30

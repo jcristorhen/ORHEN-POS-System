@@ -7,3 +7,8 @@ BEVERAGE
 CAKES
 5,Fresh,20
 6,Durian,30
+
+TAKOYAKI'S
+7,Tako Jelly,45
+8,Takoyaki with Manggo,55
+9,Takoyaki,12

@@ -281,7 +281,7 @@ def pos_system(username, role):
     inventory = load_inventory(inventory_file)
 
     if role == 'Working client':
-        print(f"\nWelcome {username} (Working client) to the Enhanced POS System")
+        print(f"\nWelcome {username}!")
 
         cart = {}
         total = [0.0]
@@ -356,7 +356,7 @@ def pos_system(username, role):
                 print("Invalid item number. Please select a valid item number from the inventory.")
 
     elif role == 'Administrator':
-        print(f"\nWelcome {username} (Administrator) to the Enhanced POS System")
+        print("\nWELCOME BACK ADMIN!")
 
         while True:
             print("\nAdministrator Menu:")

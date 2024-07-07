@@ -1,11 +1,51 @@
 import datetime
 import openpyxl
 import os
+import smtplib
+import ssl
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from openpyxl.styles import Alignment, PatternFill, Font
+import webbrowser
 
 # Global variables for Excel workbook and worksheet
 EXCEL_FILE = 'buyer_data.xlsx'
 EXCEL_SHEET = 'Buyer Orders'
+WORKING_CLIENTS_FILE = 'working_clients.xlsx'
+
+# User credentials and roles
+USERS = {
+    'admin1': {'password': 'l03e1t3', 'role': 'Administrator'}
+}
+
+# Function to authenticate user login
+def login(role=None):
+    while True:
+        username = input("Enter username: ").strip()
+        password = input("Enter password: ").strip()
+
+        # Check if user is in working clients
+        try:
+            wb = openpyxl.load_workbook(WORKING_CLIENTS_FILE)
+            sheet = wb.active
+
+            for row in sheet.iter_rows(values_only=True):
+                if username == row[1] and password == row[2]:
+                    return username, 'Working client'
+
+            print("You are not registered. Please contact your admin. Thank you!")
+        except FileNotFoundError:
+            print("Working clients database not found.")
+            return None, None
+
+        # Check if user is in USERS dictionary
+        if username in USERS and USERS[username]['password'] == password:
+            if role and USERS[username]['role'] != role:
+                print(f"Access denied. You are not authorized to access as {role}.")
+                continue
+            return username, USERS[username]['role']
+        else:
+            print("Invalid username or password. Please try again.")
 
 # Function to add item to cart
 def add_to_cart(item_number, inventory, cart, total):
@@ -49,7 +89,7 @@ def generate_receipt(cart, total, buyer_id):
     print(f"Date/Time: {timestamp}")
     print("-------------------")
     for item, details in cart.items():
-        print(f"{item}: {details['quantity']}pcs. | PHP {details['price']} = PHP {details['quantity'] * details['price']:.2f}")
+        print(f"{item}: {details['quantity']}pcs. PHP {details['price']} = PHP {details['quantity'] * details['price']:.2f}")
     print("-------------------")
     print(f"Total: PHP {total[0]:,.2f}")
     print("===================")
@@ -154,86 +194,264 @@ def display_cart(cart, total):
     else:
         print("Cart is empty.")
 
-# Main function to run the POS system
-def main():
+# Function to add inventory items
+def add_inventory(inventory):
+    print("\n=== Add Inventory Item ===")
+    item_number = input("Enter item number: ").strip()
+    name = input("Enter item name: ").strip()
+    price = float(input("Enter item price: ").strip())
+    category = input("Enter item category: ").strip().upper()
+    inventory[item_number] = {'name': name, 'price': price, 'category': category}
+    print(f"Item '{name}' added to inventory.")
+
+# Function to remove inventory items
+def remove_inventory(inventory):
+    print("\n=== Remove Inventory Item ===")
+    item_number = input("Enter item number to remove: ").strip()
+    if item_number in inventory:
+        del inventory[item_number]
+        print(f"Item with number {item_number} removed from inventory.")
+    else:
+        print(f"Item with number {item_number} not found in inventory.")
+
+# Function to register a new working client
+def register_working_client():
+    print("\n=== Register New Working Client ===")
+    username = input("Enter new username: ").strip()
+    password = input("Enter new password: ").strip()
+
+    wb = openpyxl.load_workbook(WORKING_CLIENTS_FILE)
+    sheet = wb.active
+
+    # Find the last row number with data
+    last_row = sheet.max_row
+
+    # Append the new data below the last row
+    sheet.append((last_row + 1, username, password))
+
+    wb.save(WORKING_CLIENTS_FILE)
+    wb.close()
+
+    print(f"Working client '{username}' registered successfully.")
+
+
+# Function to remove a working client account
+def remove_working_client():
+    print("\n=== Remove Working Client Account ===")
+    username_to_remove = input("Enter username to remove: ").strip()
+
+    wb = openpyxl.load_workbook(WORKING_CLIENTS_FILE)
+    sheet = wb.active
+
+    found = False
+    for row in sheet.iter_rows(min_row=2, values_only=True):
+        if row[1] == username_to_remove:
+            sheet.delete_rows(row[0])
+            found = True
+            break
+
+    if found:
+        print(f"Working client '{username_to_remove}' account removed successfully.")
+    else:
+        print(f"Working client '{username_to_remove}' not found.")
+
+    wb.save(WORKING_CLIENTS_FILE)
+    wb.close()
+
+# Function to view sales records
+def view_sales_records():
+    print("\n=== View Sales Records ===")
+
+    wb = openpyxl.load_workbook(EXCEL_FILE)
+    sheet = wb[EXCEL_SHEET]
+
+    for row in sheet.iter_rows(values_only=True):
+        print(f"Buyer ID: {row[0]} | Items Ordered: {row[1]} | Total: {row[2]}")
+
+    wb.close()
+
+# Function to clear the console screen
+def clear_screen():
+    os.system('cls' if os.name == 'nt' else 'clear')
+
+# Main POS system function
+def pos_system(username, role):
     inventory_file = 'inventory.txt'
     initialize_excel()  # Initialize Excel file with headers if it doesn't exist
     inventory = load_inventory(inventory_file)
 
-    cart = {}
-    total = [0.0]
+    if role == 'Working client':
+        print(f"\nWelcome {username}! Login date: {datetime}")
 
-    buyer_id = get_next_buyer_id()  # Initialize buyer ID
+        cart = {}
+        total = [0.0]
+        buyer_id = get_next_buyer_id()  # Initialize buyer ID
 
-    print("\nWelcome to the Enhanced POS System")
+        while True:
+            print("\nInventory by Categories:")
+            categories = set(item['category'] for item in inventory.values() if 'category' in item)
+            
+            for category in categories:
+                print(f"\n{category}:")
+                for key, item in inventory.items():
+                    if item.get('category') == category:
+                        print(f"{key}. {item['name']} - PHP {item['price']:.2f}")
+
+            display_cart(cart, total)  # Display the cart contents before prompting for item number
+
+            item_number = input("\nEnter item number to add to cart: ").strip().upper()
+
+            if item_number == 'D':
+                proceed = input("Proceed to tally and print receipt? (yes/no): ").strip().lower()
+                if proceed == 'yes':
+                    if len(cart) > 0:
+                        generate_receipt(cart, total, buyer_id)
+                        input("Press Enter to clear the screen...")  # Pause to allow user to see the receipt
+                        clear_screen()  # Clear the screen
+                        cart = {}
+                        total[0] = 0.0
+                        buyer_id += 1  # Increment buyer ID for the next buyer
+                    else:
+                        print("Cart is empty. Add items before tallying.")
+                elif proceed == 'no':
+                    continue
+                else:
+                    print("Invalid input. Please enter 'yes' or 'no'.")
+                
+            elif item_number == 'EXIT':
+                confirm_exit = input("Do you want to proceed to exit? (yes/no): ").strip().lower()
+                if confirm_exit == 'yes':
+                    return  # Exit the program by returning from the main function
+                elif confirm_exit == 'no':
+                    continue
+                else:
+                    print("Invalid input. Please enter 'yes' or 'no'.")
+                
+            elif item_number == 'R':
+                if cart:
+                    try:
+                        item_index_to_remove = int(input("Enter the number of the item to remove from cart: ").strip())
+                        if 1 <= item_index_to_remove <= len(cart):
+                            remove_from_cart(item_index_to_remove, cart, total)
+                        else:
+                            print("Invalid item number. Please select a valid item number from the cart.")
+                    except ValueError:
+                        print("Invalid input. Please enter a valid number.")
+                else:
+                    print("Cart is empty. Nothing to remove.")
+            
+            elif item_number == 'C':
+                confirm_clear = input("Are you sure you want to clear all items from the cart? (yes/no): ").strip().lower()
+                if confirm_clear == 'yes':
+                    clear_cart(cart, total)
+                elif confirm_clear == 'no':
+                    continue
+                else:
+                    print("Invalid input. Please enter 'yes' or 'no'.")
+            
+            elif item_number in inventory:
+                add_to_cart(item_number, inventory, cart, total)
+            
+            else:
+                print("Invalid item number. Please select a valid item number from the inventory.")
+
+    elif role == 'Administrator':
+        print("\nWELCOME BACK ADMIN!")
+
+        while True:
+            print("\nAdministrator Menu:")
+            print("1. POS System")
+            print("2. Remove Inventory / Add Inventory")
+            print("3. Account Manager")
+            print("4. Help")
+            print("5. Exit")
+
+            admin_choice = input("\nEnter your choice: ").strip()
+
+            if admin_choice == '1':
+                # Access the POS system for administrator
+                pos_system('Administrator', 'Working client')  # Administrator can access POS as Working client
+
+            elif admin_choice == '2':
+                # Add or Remove Inventory
+                while True:
+                    print("\nInventory Management:")
+                    print("1. Add Inventory")
+                    print("2. Remove Inventory")
+                    print("3. Back to Admin Menu")
+
+                    inventory_choice = input("Enter your choice: ").strip()
+
+                    if inventory_choice == '1':
+                        add_inventory(inventory)
+                    elif inventory_choice == '2':
+                        remove_inventory(inventory)
+                    elif inventory_choice == '3':
+                        break
+                    else:
+                        print("Invalid choice. Please enter a valid option.")
+
+            elif admin_choice == '3':
+                # Account Manager
+                while True:
+                    print("\nAccount Manager:")
+                    print("1. Register Working Client")
+                    print("2. Remove Working Client Account")
+                    print("3. View Sales Records")
+                    print("4. Back to Admin Menu")
+
+                    account_choice = input("Enter your choice: ").strip()
+
+                    if account_choice == '1':
+                        register_working_client()
+                    elif account_choice == '2':
+                        remove_working_client()
+                    elif account_choice == '3':
+                        view_sales_records()
+                    elif account_choice == '4':
+                        break
+                    else:
+                        print("Invalid choice. Please enter a valid option.")
+
+            elif admin_choice == '4':
+                # Help - Open the specified Facebook page
+                webbrowser.open('https://www.facebook.com/jcrist.orhen')
+
+            elif admin_choice == '5':
+                print("Exiting the system...")
+                return  # Exit the program by returning from the main function
+
+            else:
+                print("Invalid choice. Please enter a valid option.")
+
+    else:
+        print("Unknown role. Access denied.")
+
+# Main function to run the POS system
+def main():
+    print("=== Welcome to the Enhanced POS System ===")
 
     while True:
-        print("\nInventory by Categories:")
-        categories = set(item['category'] for item in inventory.values() if 'category' in item)
-        
-        for category in categories:
-            print(f"\n{category}:")
-            for key, item in inventory.items():
-                if 'category' in item and item['category'] == category:
-                    print(f"{key}. {item['name']} - PHP {item['price']:.2f}")
+        print("\nMenu:")
+        print("1. Login as Working Client")
+        print("2. Login as Administrator")
+        print("3. Exit")
 
-        display_cart(cart, total)  # Display the cart contents before prompting for item number
+        choice = input("\nEnter your choice: ").strip()
 
-        item_number = input("\nEnter item number to add to cart (Press 'R' to remove an item, 'D' when done, 'C' to clear cart, 'exit' to exit): ").strip().upper()
-
-        if item_number == 'D':
-            proceed = input("Proceed to tally and print receipt? (yes/no): ").strip().lower()
-            if proceed == 'yes':
-                if len(cart) > 0:
-                    generate_receipt(cart, total, buyer_id)
-                    input("Press Enter to clear the screen...")  # Pause to allow user to see the receipt
-                    os.system('cls' if os.name == 'nt' else 'clear')  # Clear the screen
-                    cart = {}
-                    total[0] = 0.0
-                    buyer_id += 1  # Increment buyer ID for the next buyer
-                else:
-                    print("Cart is empty. Add items before tallying.")
-            elif proceed == 'no':
-                continue
-            else:
-                print("Invalid input. Please enter 'yes' or 'no'.")
-        
-        elif item_number == 'EXIT':
-            confirm_exit = input("Do you want to proceed to exit? (yes/no): ").strip().lower()
-            if confirm_exit == 'yes':
-                break  # Exit the while loop and end the program
-            elif confirm_exit == 'no':
-                continue
-            else:
-                print("Invalid input. Please enter 'yes' or 'no'.")
-
-        elif item_number == 'R':
-            if cart:
-                try:
-                    item_index_to_remove = int(input("Enter the number of the item to remove from cart: ").strip())
-                    if 1 <= item_index_to_remove <= len(cart):
-                        remove_from_cart(item_index_to_remove, cart, total)
-                    else:
-                        print("Invalid item number. Please select a valid item number from the cart.")
-                except ValueError:
-                    print("Invalid input. Please enter a valid number.")
-            else:
-                print("Cart is empty. Nothing to remove.")
-        
-        elif item_number == 'C':
-            confirm_clear = input("Are you sure you want to clear all items from the cart? (yes/no): ").strip().lower()
-            if confirm_clear == 'yes':
-                clear_cart(cart, total)
-            elif confirm_clear == 'no':
-                continue
-            else:
-                print("Invalid input. Please enter 'yes' or 'no'.")
-
-        elif item_number in inventory:
-            add_to_cart(item_number, inventory, cart, total)
-
+        if choice == '1':
+            username, role = login('Working client')
+            if role == 'Working client':
+                pos_system(username, role)
+        elif choice == '2':
+            username, role = login('Administrator')
+            if role == 'Administrator':
+                pos_system(username, role)
+        elif choice == '3':
+            print("Exiting the system...")
+            break
         else:
-            print("Invalid item number. Please select a valid item number from the inventory.")
+            print("Invalid choice. Please enter a valid option.")
 
 if __name__ == "__main__":
     main()

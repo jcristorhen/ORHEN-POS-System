@@ -1,17 +1,13 @@
 import datetime
 import openpyxl
 import os
-import smtplib
-import ssl
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-from openpyxl.styles import Alignment, PatternFill, Font
 import webbrowser
 
 # Global variables for Excel workbook and worksheet
 EXCEL_FILE = 'buyer_data.xlsx'
 EXCEL_SHEET = 'Buyer Orders'
 WORKING_CLIENTS_FILE = 'working_clients.xlsx'
+INVENTORY_FILE = 'inventory.txt'
 
 # User credentials and roles
 USERS = {
@@ -24,28 +20,27 @@ def login(role=None):
         username = input("Enter username: ").strip()
         password = input("Enter password: ").strip()
 
-        # Check if user is in working clients
-        try:
-            wb = openpyxl.load_workbook(WORKING_CLIENTS_FILE)
-            sheet = wb.active
+        if role == 'Administrator':
+            if username in USERS and USERS[username]['password'] == password:
+                return username, 'Administrator'
+            else:
+                print("Invalid username or password. Please try again.")
+        elif role == 'Working client':
+            try:
+                wb = openpyxl.load_workbook(WORKING_CLIENTS_FILE)
+                sheet = wb.active
 
-            for row in sheet.iter_rows(values_only=True):
-                if username == row[1] and password == row[2]:
-                    return username, 'Working client'
+                for row in sheet.iter_rows(values_only=True):
+                    if username == row[1] and password == row[2]:
+                        return username, 'Working client'
 
-            print("You are not registered. Please contact your admin. Thank you!")
-        except FileNotFoundError:
-            print("Working clients database not found.")
-            return None, None
-
-        # Check if user is in USERS dictionary
-        if username in USERS and USERS[username]['password'] == password:
-            if role and USERS[username]['role'] != role:
-                print(f"Access denied. You are not authorized to access as {role}.")
-                continue
-            return username, USERS[username]['role']
+                print("You are not registered. Please contact your admin. Thank you!")
+            except FileNotFoundError:
+                print("Working clients database not found.")
+                return None, None
         else:
-            print("Invalid username or password. Please try again.")
+            print("Unknown role specified.")
+            return None, None
 
 # Function to add item to cart
 def add_to_cart(item_number, inventory, cart, total):
@@ -63,16 +58,21 @@ def add_to_cart(item_number, inventory, cart, total):
 
 # Function to remove item from cart
 def remove_from_cart(item_index, cart, total):
-    if item_index <= len(cart):
-        item_name = list(cart.keys())[item_index - 1]
-        if item_name in cart:
+    if not cart:
+        print("Cart is empty. Nothing to remove.")
+        return
+    
+    cart_items = list(cart.keys())
+    if 1 <= item_index <= len(cart_items):
+        item_name = cart_items[item_index - 1]
+        if cart[item_name]['quantity'] > 0:
             cart[item_name]['quantity'] -= 1
             total[0] -= cart[item_name]['price']
             if cart[item_name]['quantity'] <= 0:
                 del cart[item_name]
             print(f"Removed one '{item_name}' from cart. Total: PHP {total[0]:,.2f}")
         else:
-            print(f"Item '{item_name}' is not in the cart.")
+            print(f"No '{item_name}' in the cart to remove.")
     else:
         print("Invalid item number. Please select a valid item number from the cart.")
 
@@ -95,19 +95,28 @@ def generate_receipt(cart, total, buyer_id):
     print("===================")
 
     # Store buyer data in Excel
-    wb = openpyxl.load_workbook(EXCEL_FILE)
-    sheet = wb[EXCEL_SHEET]
+    try:
+        wb = openpyxl.load_workbook(EXCEL_FILE)
+    except FileNotFoundError:
+        wb = openpyxl.Workbook()
+
+    if EXCEL_SHEET not in wb.sheetnames:
+        wb.create_sheet(EXCEL_SHEET)
+        sheet = wb[EXCEL_SHEET]
+        sheet.append(['Buyer ID', 'Items Ordered', 'Total'])
+    else:
+        sheet = wb[EXCEL_SHEET]
 
     row = (buyer_id, ', '.join([f"{item}: {details['quantity']}pcs." for item, details in cart.items()]), f"PHP {total[0]:,.2f}")
     sheet.append(row)
 
     # Formatting styles
-    left_alignment = Alignment(horizontal='left', vertical='center')
-    center_alignment = Alignment(horizontal='center', vertical='center')
-    buyer_id_fill = PatternFill(start_color="ADD8E6", end_color="ADD8E6", fill_type="solid")  # Light blue
-    header_fill = PatternFill(start_color="2F4F4F", end_color="2F4F4F", fill_type="solid")  # Dark gray
-    orders_fill = PatternFill(start_color="D3D3D3", end_color="D3D3D3", fill_type="solid")  # Gray
-    price_fill = PatternFill(start_color="FFCCCC", end_color="FFCCCC", fill_type="solid")  # Light red
+    left_alignment = openpyxl.styles.Alignment(horizontal='left', vertical='center')
+    center_alignment = openpyxl.styles.Alignment(horizontal='center', vertical='center')
+    buyer_id_fill = openpyxl.styles.PatternFill(start_color="ADD8E6", end_color="ADD8E6", fill_type="solid")  # Light blue
+    header_fill = openpyxl.styles.PatternFill(start_color="2F4F4F", end_color="2F4F4F", fill_type="solid")  # Dark gray
+    orders_fill = openpyxl.styles.PatternFill(start_color="D3D3D3", end_color="D3D3D3", fill_type="solid")  # Gray
+    price_fill = openpyxl.styles.PatternFill(start_color="FFCCCC", end_color="FFCCCC", fill_type="solid")  # Light red
 
     # Apply formatting
     for cell in sheet[f"A{sheet.max_row}:C{sheet.max_row}"]:
@@ -121,13 +130,13 @@ def generate_receipt(cart, total, buyer_id):
             elif c.column == 3:
                 c.alignment = center_alignment
                 c.fill = price_fill
-            c.font = Font(bold=True)
+            c.font = openpyxl.styles.Font(bold=True)
 
     # Apply header formatting
     for col in sheet.iter_cols(min_row=1, max_row=1, min_col=1, max_col=sheet.max_column):
         for cell in col:
             cell.fill = header_fill
-            cell.font = Font(bold=True, color="FFFFFF")  # White font color for headers
+            cell.font = openpyxl.styles.Font(bold=True, color="FFFFFF")  # White font color for headers
 
     wb.save(EXCEL_FILE)
     wb.close()
@@ -135,10 +144,10 @@ def generate_receipt(cart, total, buyer_id):
 # Function to load inventory from file and categorize items
 def load_inventory(filename):
     inventory = {}
-    category = None
 
     try:
         with open(filename, 'r') as file:
+            category = None
             for line in file:
                 line = line.strip()
                 if line:
@@ -157,7 +166,7 @@ def load_inventory(filename):
                             print(f"Ignoring malformed line: {line}")
     except FileNotFoundError:
         print(f"Inventory file '{filename}' not found.")
-    
+
     return inventory
 
 # Function to initialize Excel file with headers if it doesn't exist
@@ -172,16 +181,20 @@ def initialize_excel():
 
 # Function to get the next available Buyer ID
 def get_next_buyer_id():
-    wb = openpyxl.load_workbook(EXCEL_FILE)
-    sheet = wb[EXCEL_SHEET]
+    try:
+        wb = openpyxl.load_workbook(EXCEL_FILE)
+        sheet = wb[EXCEL_SHEET]
 
-    if sheet.max_row > 1:
-        last_buyer_id = sheet.cell(row=sheet.max_row, column=1).value
-        next_buyer_id = last_buyer_id + 1
-    else:
+        if sheet.max_row > 1:
+            last_buyer_id = sheet.cell(row=sheet.max_row, column=1).value
+            next_buyer_id = last_buyer_id + 1
+        else:
+            next_buyer_id = 1
+
+        wb.close()
+    except FileNotFoundError:
         next_buyer_id = 1
 
-    wb.close()
     return next_buyer_id
 
 # Function to display the current cart contents
@@ -192,266 +205,129 @@ def display_cart(cart, total):
             print(f"{index}. {item}: {details['quantity']}pcs. | PHP {details['price']} each")
         print(f"Total: PHP {total[0]:,.2f}")
     else:
-        print("Cart is empty.")
+        print("Empty cart.")
 
-# Function to add inventory items
-def add_inventory(inventory):
-    print("\n=== Add Inventory Item ===")
-    item_number = input("Enter item number: ").strip()
-    name = input("Enter item name: ").strip()
-    price = float(input("Enter item price: ").strip())
-    category = input("Enter item category: ").strip().upper()
-    inventory[item_number] = {'name': name, 'price': price, 'category': category}
-    print(f"Item '{name}' added to inventory.")
+# Function to handle inventory addition
+def add_inventory(item_number, name, price, category, inventory):
+    if item_number in inventory:
+        print(f"Item number '{item_number}' already exists in inventory. Use update option to modify.")
+    else:
+        inventory[item_number] = {'name': name, 'price': price, 'category': category}
+        save_inventory(INVENTORY_FILE, inventory)
+        print(f"Item '{name}' added to inventory.")
 
-# Function to remove inventory items
-def remove_inventory(inventory):
-    print("\n=== Remove Inventory Item ===")
-    item_number = input("Enter item number to remove: ").strip()
+# Function to handle inventory removal
+def remove_inventory(item_number, inventory):
     if item_number in inventory:
         del inventory[item_number]
-        print(f"Item with number {item_number} removed from inventory.")
+        save_inventory(INVENTORY_FILE, inventory)
+        print(f"Item '{item_number}' removed from inventory.")
     else:
-        print(f"Item with number {item_number} not found in inventory.")
+        print(f"Item number '{item_number}' not found in inventory.")
 
-# Function to register a new working client
-def register_working_client():
-    print("\n=== Register New Working Client ===")
-    username = input("Enter new username: ").strip()
-    password = input("Enter new password: ").strip()
-
-    wb = openpyxl.load_workbook(WORKING_CLIENTS_FILE)
-    sheet = wb.active
-
-    # Find the last row number with data
-    last_row = sheet.max_row
-
-    # Append the new data below the last row
-    sheet.append((last_row + 1, username, password))
-
-    wb.save(WORKING_CLIENTS_FILE)
-    wb.close()
-
-    print(f"Working client '{username}' registered successfully.")
-
-
-# Function to remove a working client account
-def remove_working_client():
-    print("\n=== Remove Working Client Account ===")
-    username_to_remove = input("Enter username to remove: ").strip()
-
-    wb = openpyxl.load_workbook(WORKING_CLIENTS_FILE)
-    sheet = wb.active
-
-    found = False
-    for row in sheet.iter_rows(min_row=2, values_only=True):
-        if row[1] == username_to_remove:
-            sheet.delete_rows(row[0])
-            found = True
-            break
-
-    if found:
-        print(f"Working client '{username_to_remove}' account removed successfully.")
-    else:
-        print(f"Working client '{username_to_remove}' not found.")
-
-    wb.save(WORKING_CLIENTS_FILE)
-    wb.close()
-
-# Function to view sales records
-def view_sales_records():
-    print("\n=== View Sales Records ===")
-
-    wb = openpyxl.load_workbook(EXCEL_FILE)
-    sheet = wb[EXCEL_SHEET]
-
-    for row in sheet.iter_rows(values_only=True):
-        print(f"Buyer ID: {row[0]} | Items Ordered: {row[1]} | Total: {row[2]}")
-
-    wb.close()
-
-# Function to clear the console screen
-def clear_screen():
-    os.system('cls' if os.name == 'nt' else 'clear')
-
-# Main POS system function
-def pos_system(username, role):
-    inventory_file = 'inventory.txt'
-    initialize_excel()  # Initialize Excel file with headers if it doesn't exist
-    inventory = load_inventory(inventory_file)
-
-    if role == 'Working client':
-        print(f"\nWelcome {username}!")
-
-        cart = {}
-        total = [0.0]
-        buyer_id = get_next_buyer_id()  # Initialize buyer ID
-
-        while True:
-            print("\nInventory by Categories:")
-            categories = set(item['category'] for item in inventory.values() if 'category' in item)
-            
-            for category in categories:
-                print(f"\n{category}:")
-                for key, item in inventory.items():
-                    if item.get('category') == category:
-                        print(f"{key}. {item['name']} - PHP {item['price']:.2f}")
-
-            display_cart(cart, total)  # Display the cart contents before prompting for item number
-
-            item_number = input("\nEnter item number to add to cart: ").strip().upper()
-
-            if item_number == 'D':
-                proceed = input("Proceed to tally and print receipt? (yes/no): ").strip().lower()
-                if proceed == 'yes':
-                    if len(cart) > 0:
-                        generate_receipt(cart, total, buyer_id)
-                        input("Press Enter to clear the screen...")  # Pause to allow user to see the receipt
-                        clear_screen()  # Clear the screen
-                        cart = {}
-                        total[0] = 0.0
-                        buyer_id += 1  # Increment buyer ID for the next buyer
-                    else:
-                        print("Cart is empty. Add items before tallying.")
-                elif proceed == 'no':
-                    continue
-                else:
-                    print("Invalid input. Please enter 'yes' or 'no'.")
-                
-            elif item_number == 'EXIT':
-                confirm_exit = input("Do you want to proceed to exit? (yes/no): ").strip().lower()
-                if confirm_exit == 'yes':
-                    return  # Exit the program by returning from the main function
-                elif confirm_exit == 'no':
-                    continue
-                else:
-                    print("Invalid input. Please enter 'yes' or 'no'.")
-                
-            elif item_number == 'R':
-                if cart:
-                    try:
-                        item_index_to_remove = int(input("Enter the number of the item to remove from cart: ").strip())
-                        if 1 <= item_index_to_remove <= len(cart):
-                            remove_from_cart(item_index_to_remove, cart, total)
-                        else:
-                            print("Invalid item number. Please select a valid item number from the cart.")
-                    except ValueError:
-                        print("Invalid input. Please enter a valid number.")
-                else:
-                    print("Cart is empty. Nothing to remove.")
-            
-            elif item_number == 'C':
-                confirm_clear = input("Are you sure you want to clear all items from the cart? (yes/no): ").strip().lower()
-                if confirm_clear == 'yes':
-                    clear_cart(cart, total)
-                elif confirm_clear == 'no':
-                    continue
-                else:
-                    print("Invalid input. Please enter 'yes' or 'no'.")
-            
-            elif item_number in inventory:
-                add_to_cart(item_number, inventory, cart, total)
-            
-            else:
-                print("Invalid item number. Please select a valid item number from the inventory.")
-
-    elif role == 'Administrator':
-        print("\nWELCOME BACK ADMIN!")
-
-        while True:
-            print("\nAdministrator Menu:")
-            print("1. POS System")
-            print("2. Remove Inventory / Add Inventory")
-            print("3. Account Manager")
-            print("4. Help")
-            print("5. Exit")
-
-            admin_choice = input("\nEnter your choice: ").strip()
-
-            if admin_choice == '1':
-                # Access the POS system for administrator
-                pos_system('Administrator', 'Working client')  # Administrator can access POS as Working client
-
-            elif admin_choice == '2':
-                # Add or Remove Inventory
-                while True:
-                    print("\nInventory Management:")
-                    print("1. Add Inventory")
-                    print("2. Remove Inventory")
-                    print("3. Back to Admin Menu")
-
-                    inventory_choice = input("Enter your choice: ").strip()
-
-                    if inventory_choice == '1':
-                        add_inventory(inventory)
-                    elif inventory_choice == '2':
-                        remove_inventory(inventory)
-                    elif inventory_choice == '3':
-                        break
-                    else:
-                        print("Invalid choice. Please enter a valid option.")
-
-            elif admin_choice == '3':
-                # Account Manager
-                while True:
-                    print("\nAccount Manager:")
-                    print("1. Register Working Client")
-                    print("2. Remove Working Client Account")
-                    print("3. View Sales Records")
-                    print("4. Back to Admin Menu")
-
-                    account_choice = input("Enter your choice: ").strip()
-
-                    if account_choice == '1':
-                        register_working_client()
-                    elif account_choice == '2':
-                        remove_working_client()
-                    elif account_choice == '3':
-                        view_sales_records()
-                    elif account_choice == '4':
-                        break
-                    else:
-                        print("Invalid choice. Please enter a valid option.")
-
-            elif admin_choice == '4':
-                # Help - Open the specified Facebook page
-                webbrowser.open('https://www.facebook.com/jcrist.orhen')
-
-            elif admin_choice == '5':
-                print("Exiting the system...")
-                return  # Exit the program by returning from the main function
-
-            else:
-                print("Invalid choice. Please enter a valid option.")
-
-    else:
-        print("Unknown role. Access denied.")
+# Function to save inventory to file
+def save_inventory(filename, inventory):
+    try:
+        with open(filename, 'w') as file:
+            for item_number, details in inventory.items():
+                if 'category' in details:
+                    file.write(f"{details['category']}\n")
+                file.write(f"{item_number},{details['name']}, ${details['price']:.2f}\n")
+    except IOError:
+        print(f"Error saving inventory to {filename}")
 
 # Main function to run the POS system
 def main():
-    print("=== Welcome to the Enhanced POS System ===")
+    # Initialize Excel file if not exists
+    initialize_excel()
+
+    # Load inventory from file
+    inventory = load_inventory(INVENTORY_FILE)
+
+    # Initialize cart and total
+    cart = {}
+    total = [0.0]
 
     while True:
-        print("\nMenu:")
-        print("1. Login as Working Client")
-        print("2. Login as Administrator")
-        print("3. Exit")
-
-        choice = input("\nEnter your choice: ").strip()
+        print("\n===== Welcome to the POS System =====")
+        print("1. Add item to cart")
+        print("2. Remove item from cart")
+        print("3. Clear cart")
+        print("4. Display cart")
+        print("5. Checkout")
+        print("6. Administrator Menu")
+        print("7. Exit")
+        choice = input("Enter your choice: ").strip()
 
         if choice == '1':
-            username, role = login('Working client')
-            if role == 'Working client':
-                pos_system(username, role)
+            item_number = input("Enter item number to add to cart: ").strip()
+            add_to_cart(item_number, inventory, cart, total)
         elif choice == '2':
+            if cart:
+                display_cart(cart, total)
+                item_index = int(input("Enter item number to remove from cart: ").strip())
+                remove_from_cart(item_index, cart, total)
+            else:
+                print("Cart is empty. Nothing to remove.")
+        elif choice == '3':
+            clear_cart(cart, total)
+        elif choice == '4':
+            display_cart(cart, total)
+        elif choice == '5':
+            if cart:
+                buyer_id = get_next_buyer_id()
+                generate_receipt(cart, total, buyer_id)
+                cart.clear()
+                total[0] = 0.0
+            else:
+                print("Cart is empty. Nothing to checkout.")
+        elif choice == '6':
             username, role = login('Administrator')
             if role == 'Administrator':
-                pos_system(username, role)
-        elif choice == '3':
-            print("Exiting the system...")
+                administrator_menu(inventory)
+        elif choice == '7':
+            print("Thank you for using the POS system.")
             break
         else:
-            print("Invalid choice. Please enter a valid option.")
+            print("Invalid choice. Please enter a number from 1 to 7.")
+
+# Function for administrator menu
+def administrator_menu(inventory):
+    while True:
+        print("\n===== Administrator Menu =====")
+        print("1. Add item to inventory")
+        print("2. Remove item from inventory")
+        print("3. View inventory")
+        print("4. Open buyer data Excel")
+        print("5. Exit to main menu")
+        admin_choice = input("Enter your choice: ").strip()
+
+        if admin_choice == '1':
+            item_number = input("Enter item number to add to inventory: ").strip()
+            name = input("Enter item name: ").strip()
+            price = float(input("Enter item price: ").strip())
+            category = input("Enter item category (optional): ").strip()
+            add_inventory(item_number, name, price, category, inventory)
+        elif admin_choice == '2':
+            item_number = input("Enter item number to remove from inventory: ").strip()
+            remove_inventory(item_number, inventory)
+        elif admin_choice == '3':
+            print("\nCurrent Inventory:")
+            for item_number, details in inventory.items():
+                if 'category' in details:
+                    print(f"{item_number}: {details['name']} (${details['price']:.2f}) - {details['category']}")
+                else:
+                    print(f"{item_number}: {details['name']} (${details['price']:.2f})")
+        elif admin_choice == '4':
+            try:
+                webbrowser.open_new(EXCEL_FILE)
+            except Exception as e:
+                print(f"Failed to open Excel file: {e}")
+        elif admin_choice == '5':
+            print("Exiting administrator menu.")
+            break
+        else:
+            print("Invalid choice. Please enter a number from 1 to 5.")
 
 if __name__ == "__main__":
     main()

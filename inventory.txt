@@ -1,14 +1,14 @@
 BEVERAGE
-1,Apple Juice,20
-2,Manggo Juice,20
-3,Guyabano Juice,20
-4,Ice Mixed Guyabano with Teal,30
-
+2,Manggo Juice, $20.00
+BEVERAGE
+4,Ice Mixed Guyabano with Teal, $30.00
 CAKES
-5,Fresh,20
-6,Durian,30
-
+5,Fresh, $20.00
+CAKES
+6,Durian, $30.00
 TAKOYAKI'S
-7,Tako Jelly,45
-8,Takoyaki with Manggo,55
-9,Takoyaki,12
+7,Tako Jelly, $45.00
+TAKOYAKI'S
+8,Takoyaki with Manggo, $55.00
+TAKOYAKI'S
+9,Takoyaki, $12.00

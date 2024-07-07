@@ -49,7 +49,7 @@ def generate_receipt(cart, total, buyer_id):
     print(f"Date/Time: {timestamp}")
     print("-------------------")
     for item, details in cart.items():
-        print(f"{item}: {details['quantity']}pcs. @ PHP {details['price']} = PHP {details['quantity'] * details['price']:.2f}")
+        print(f"{item}: {details['quantity']}pcs. | PHP {details['price']} = PHP {details['quantity'] * details['price']:.2f}")
     print("-------------------")
     print(f"Total: PHP {total[0]:,.2f}")
     print("===================")
@@ -149,7 +149,7 @@ def display_cart(cart, total):
     print("\nCurrent Cart Contents:")
     if cart:
         for index, (item, details) in enumerate(cart.items(), start=1):
-            print(f"{index}. {item}: {details['quantity']}pcs. @ PHP {details['price']} each")
+            print(f"{index}. {item}: {details['quantity']}pcs. | PHP {details['price']} each")
         print(f"Total: PHP {total[0]:,.2f}")
     else:
         print("Cart is empty.")

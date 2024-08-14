@@ -1,14 +1,12 @@
-BEVERAGE
-2,Manggo Juice, $20.00
-BEVERAGE
-4,Ice Mixed Guyabano with Teal, $30.00
-CAKES
-5,Fresh, $20.00
-CAKES
-6,Durian, $30.00
-TAKOYAKI'S
-7,Tako Jelly, $45.00
-TAKOYAKI'S
-8,Takoyaki with Manggo, $55.00
-TAKOYAKI'S
-9,Takoyaki, $12.00
+MILK TEA
+1,Capuccino,50.0
+2,White Chocolate,80.0
+3,Milo w/ Chocolate,50.0
+4,Iced Coffee Latte,30.0
+5,Orhen Special Iced Coffee McGrady,119.0
+BEVERAGES
+6,Coke,20.0
+7,Sprite,20.0
+8,Royal,20.0
+9,Juicy Lemon,20.0
+10,Sting,20.0

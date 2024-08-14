@@ -235,7 +235,6 @@ def register_working_client():
     print(f"Working client '{username}' registered successfully.")
 
 
-# Function to remove a working client account
 def remove_working_client():
     print("\n=== Remove Working Client Account ===")
     username_to_remove = input("Enter username to remove: ").strip()
@@ -244,9 +243,9 @@ def remove_working_client():
     sheet = wb.active
 
     found = False
-    for row in sheet.iter_rows(min_row=2, values_only=True):
-        if row[1] == username_to_remove:
-            sheet.delete_rows(row[0])
+    for row in sheet.iter_rows(min_row=2, values_only=False):
+        if row[1].value == username_to_remove:
+            sheet.delete_rows(row[0].row)
             found = True
             break
 
@@ -257,6 +256,7 @@ def remove_working_client():
 
     wb.save(WORKING_CLIENTS_FILE)
     wb.close()
+
 
 # Function to view sales records
 def view_sales_records():
@@ -361,7 +361,7 @@ def pos_system(username, role):
         while True:
             print("\nAdministrator Menu:")
             print("1. POS System")
-            print("2. Remove Inventory / Add Inventory")
+            print("2. Inventory Management")
             print("3. Account Manager")
             print("4. Help")
             print("5. Exit")
@@ -429,7 +429,7 @@ def pos_system(username, role):
 
 # Main function to run the POS system
 def main():
-    print("=== Welcome to the Enhanced POS System ===")
+    print("=== Welcome to the ORHEN POS System ===")
 
     while True:
         print("\nMenu:")
